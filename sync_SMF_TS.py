@@ -24,6 +24,7 @@ teamspeak = {'dbhost': '',
             }
 
 def connect_mysql():
+    '''Make a connection to the mysql server'''
     try:
         con = MySQLdb.connect(mysql['dbhost'], mysql['dbuser'], mysql['dbpass'], mysql['dbname'])
     except MySQLdb.Error, e:
@@ -33,6 +34,7 @@ def connect_mysql():
     return con
 
 def connect_sqlite3():
+    '''Make a connection to the ts3 sqlite file'''
     try:
         con = sqlite3.connect(sqlite['dbfile'])
     except sqlite3.Error:
@@ -42,6 +44,7 @@ def connect_sqlite3():
     return con
 
 def connect_ts3():
+   '''Make a connection to the ts3 query port'''
     con = ts3.TS3Server(teamspeak['dbhost'], teamspeak['dbport'])
     con.login(teamspeak['dbuser'], teamspeak['dbpass'])
     try:
@@ -53,9 +56,13 @@ def connect_ts3():
     return con
 
 def get_mysql_unique_ids():
+    '''Returns a list of all UniqueIDs in the DB which have matched TEA rule 1'''
     con = connect_mysql()
     ids = []
-    query = 'SELECT smf_tea_ts_users.tsid FROM smf_tea_ts_users, smf_tea_api WHERE smf_tea_api.ID_MEMBER = smf_tea_ts_users.id AND smf_tea_api.matched LIKE "1;%";'
+    query = '''SELECT smf_tea_ts_users.tsid
+               FROM smf_tea_ts_users, smf_tea_api
+               WHERE smf_tea_api.ID_MEMBER = smf_tea_ts_users.id
+               AND smf_tea_api.matched LIKE "1;%";'''
     cur = con.cursor()
     cur.execute(query)
     rows = cur.fetchall()
@@ -66,6 +73,7 @@ def get_mysql_unique_ids():
     return ids
 
 def get_ts_unique_ids():
+    '''Returns a list of all UniqueIDs in the teamspeak group'''
     con = connect_ts3()
     unique_ids = []
     response = con.send_command('servergroupclientlist', keys={'sgid': teamspeak['groupid']}, opts=('names',))
@@ -78,9 +86,12 @@ def get_ts_unique_ids():
     return unique_ids
 
 def list_comp(list1, list2):
+    '''Returns items in list1 which are not in list2'''
     return [x for x in list1 if x not in list2]
 
 def remove_from_ts(ids):
+    '''Removes the list of ids from the teamspeak group.
+       This will leave known IDs in the guest group'''
     con = connect_ts3()
     ts_db_ids = []
     for id in ids:
@@ -96,6 +107,7 @@ def remove_from_ts(ids):
     return len(ts_db_ids)
 
 def add_to_ts(ids):
+    '''Adds a list of ids to the sqlite file and then assigns them to the group'''
     sqlite_con = connect_sqlite3()
     sqlite_cur = sqlite_con.cursor()
     ts_con = connect_ts3()
@@ -121,16 +133,8 @@ def add_to_ts(ids):
 
     return len(cldbids)
 
-tsuniqueids = get_ts_unique_ids()
-mysqluniqueids = get_mysql_unique_ids()
+tsuniqueids = get_ts_unique_ids() # Get the list of UniqueIDs in the group of interest in Teamspeak
+mysqluniqueids = get_mysql_unique_ids() # Get the list of UniqueIDs from SMF's DB
 
-ids_to_remove_from_ts = list_comp(tsuniqueids, mysqluniqueids)
-ids_to_add_to_ts = list_comp(mysqluniqueids, tsuniqueids)
-
-removed = remove_from_ts(ids_to_remove_from_ts)
-added = add_to_ts(ids_to_add_to_ts)
-
-if removed:
-    print "Removed %s IDs from the group" % removed
-if added:
-    print "Added %s IDs to the group" % added
+ids_to_remove_from_ts = list_comp(tsuniqueids, mysqluniqueids) # Calculate the IDs to remove from TS
+ids_to_add_to_ts = list_comp(mysqluniqueids, tsuniqueids) # Calculate the IDs to add to TS
